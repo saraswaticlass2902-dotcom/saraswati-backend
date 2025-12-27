@@ -10,6 +10,12 @@ const { body, validationResult } = require("express-validator");
 const { v4: uuidv4 } = require("uuid");
 const jwt = require("jsonwebtoken");
 
+
+const Transaction = require("../models/Transaction");
+const Balance = require("../models/Balance");
+const Stock = require("../models/Stock");
+
+
 // Email transporter (Gmail - App Password recommended)
 const transporter = nodemailer.createTransport({
   service: "gmail",
@@ -37,14 +43,7 @@ function hashOtp(otp) {
   return crypto.createHash("sha256").update(String(otp)).digest("hex");
 }
 
-// IMPORTANT DB INDEX RECOMMENDATIONS (in Verification model):
-// - add TTL index on expiresAt: { expiresAt: 1 }, expireAfterSeconds: 0
-// - add unique index on otpToken: { otpToken: 1 }, unique: true
-// These keep the collection lean and ensure token uniqueness.
 
-// ====================================================================
-// 1) CHECK EMAIL (register flow) -> creates Verification record + emails OTP
-// ====================================================================
 exports.checkEmail = [
   body("email").isEmail().withMessage("Valid email required"),
   async (req, res) => {
@@ -68,6 +67,7 @@ exports.checkEmail = [
 
       // Create OTP, hash, and create Verification record
       const otp = generateNumericOtp(6);
+      console.log("DEBUG OTP:", otp); // Temporary debug log
       const otpHash = hashOtp(otp);
       const otpToken = uuidv4();
       const OTP_TTL_MS = parseInt(process.env.OTP_TTL_MS || String(10 * 60 * 1000), 10);
@@ -120,9 +120,7 @@ exports.checkEmail = [
   },
 ];
 
-// ====================================================================
-// 2) VERIFY OTP (works for both register & forgot flows)
-// ====================================================================
+
 exports.verifyOtp = [
   body("email").isEmail().withMessage("Valid email required"),
   body("otp").isLength({ min: 6, max: 6 }).withMessage("OTP must be 6 digits"),
@@ -195,10 +193,7 @@ exports.verifyOtp = [
   },
 ];
 
-// ====================================================================
-// 3) REGISTER USER
-//    - Ensures prior Verification exists and is verified
-// ====================================================================
+
 exports.registerUser = [
   body("username").trim().notEmpty().withMessage("Username is required"),
   body("email").isEmail().withMessage("Valid email required"),
@@ -274,41 +269,52 @@ exports.registerUser = [
     }
   },
 ];
-
-// ====================================================================
-// 4) LOGIN USER
-// ====================================================================
+// ================= LOGIN USER =================
 exports.loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
     const normalized = String(email).toLowerCase().trim();
 
     const user = await Registration.findOne({ email: normalized });
-    if (!user || !user.password) return res.status(401).json({ message: "Invalid credentials" });
+    if (!user || !user.password) {
+      return res.status(401).json({ ok: false, message: "Invalid credentials" });
+    }
 
     const isMatch = await bcrypt.compare(String(password), user.password);
-    if (!isMatch) return res.status(401).json({ message: "Invalid credentials" });
+    if (!isMatch) {
+      return res.status(401).json({ ok: false, message: "Invalid credentials" });
+    }
 
-    const token = jwt.sign({ id: user._id, email: user.email, role: user.role }, process.env.JWT_SECRET, { expiresIn: "3d" });
+    const token = jwt.sign(
+      { id: user._id, email: user.email, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: "3d" }
+    );
 
-    // cookie config - change secure & sameSite in production
+    // 🔥 COOKIE (IMPORTANT)
     res.cookie("token", token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax",
+      secure: false,       // localhost
+      sameSite: "lax",     // VERY IMPORTANT
       maxAge: 3 * 24 * 60 * 60 * 1000,
     });
 
-    return res.status(200).json({ message: "Login successful", user: { id: user._id.toString(), email: user.email, username: user.username } });
+    return res.status(200).json({
+      ok: true, // 🔥 MUST
+      message: "Login successful",
+      user: {
+        id: user._id,
+        email: user.email,
+        role: user.role,
+      },
+    });
   } catch (err) {
     console.error("loginUser error:", err);
-    return res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ ok: false, message: "Server error" });
   }
 };
 
-// ====================================================================
-// 5) FORGOT PASSWORD - create Verification (purpose: "forgot")
-// ====================================================================
+
 exports.forgotPassword = [
   body("email").isEmail().withMessage("Valid email required"),
   async (req, res) => {
@@ -373,3 +379,135 @@ exports.forgotPassword = [
     }
   },
 ];
+// ================= LOGOUT USER =================
+exports.logout = (req, res) => {
+  try {
+    res.clearCookie("token", {
+      httpOnly: true,
+      secure: false,      // localhost साठी false, production मध्ये true
+      sameSite: "lax",    // VERY IMPORTANT (match login cookie)
+    });
+
+    return res.status(200).json({
+      ok: true,
+      message: "Logged out successfully",
+    });
+  } catch (err) {
+    console.error("logout error:", err);
+    return res.status(500).json({ ok: false, message: "Logout failed" });
+  }
+};
+
+
+exports.changePassword = async (req, res) => {
+  try {
+    const { oldPassword, newPassword } = req.body;
+
+    if (!oldPassword || !newPassword) {
+      return res.status(400).json({ error: "Missing fields" });
+    }
+
+    // 🔐 Logged-in user (from JWT middleware)
+    const user = await Registration.findById(req.user._id);
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // 🔍 Old password check
+    const isMatch = await bcrypt.compare(oldPassword, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ error: "Old password is incorrect" });
+    }
+
+    // 🔒 Hash new password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+    user.password = hashedPassword;
+    await user.save();
+
+    return res.json({ ok: true, message: "Password changed successfully" });
+  } catch (err) {
+    console.error("Change password error:", err);
+    return res.status(500).json({ error: "Server error" });
+  }
+};
+
+exports.verifyDeleteOtp = async (req, res) => {
+  try {
+    const { otp } = req.body;
+    const user = await Registration.findById(req.user._id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const record = await Verification.findOne({
+      email: user.email,
+      purpose: "delete",
+      verified: false,
+    }).sort({ createdAt: -1 });
+
+    if (!record) {
+      return res.status(400).json({ message: "OTP not found" });
+    }
+
+    if (record.expiresAt < new Date()) {
+      return res.status(400).json({ message: "OTP expired" });
+    }
+
+    const providedHash = hashOtp(String(otp).trim());
+
+    if (providedHash !== record.otpHash) {
+      return res.status(400).json({ message: "Invalid OTP" });
+    }
+
+    // OTP verified
+    record.verified = true;
+    await record.save();
+
+    const email = user.email;
+
+    // 🔥 delete all user data
+    await Transaction.deleteMany({ email });
+    await Balance.deleteMany({ email });
+    await Stock.deleteMany({ email });
+    await Registration.deleteOne({ _id: user._id });
+    await Verification.deleteMany({ email, purpose: "delete" });
+
+    res.clearCookie("token", { path: "/", sameSite: "lax" });
+
+    return res.json({ ok: true, message: "Account deleted successfully" });
+  } catch (err) {
+    console.error("verifyDeleteOtp error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+exports.sendDeleteOtp = async (req, res) => {
+  try {
+    const user = await Registration.findById(req.user._id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const otp = generateNumericOtp(6);
+    const otpHash = hashOtp(otp);
+
+    await Verification.create({
+      email: user.email,
+      otpHash,
+      purpose: "delete",
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000), // 5 min
+      attempts: 0,
+      verified: false,
+    });
+
+    await transporter.sendMail({
+      to: user.email,
+      subject: "Delete Account OTP",
+      text: `Your OTP is ${otp}. Valid for 5 minutes.`,
+    });
+
+    return res.json({ ok: true, message: "OTP sent" });
+  } catch (err) {
+    console.error("sendDeleteOtp error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};

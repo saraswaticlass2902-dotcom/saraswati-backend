@@ -1,21 +1,25 @@
-// middlewares/adminMiddleware.js
-
-
 const jwt = require("jsonwebtoken");
+const Admin = require("../models/Admin");
 
-const verifyAdminToken = (req, res, next) => {
-  const token = req.cookies.adminToken;
-
-  if (!token) return res.status(401).json({ message: "Not authorized" });
-
+const verifyAdminToken = async (req, res, next) => {
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || "your_jwt_secret");
-    req.admin = decoded;
+    const token = req.cookies.token; // ✅ FIX HERE
+    if (!token) {
+      return res.status(401).json({ message: "Admin not logged in" });
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const admin = await Admin.findById(decoded.id).select("-password");
+
+    if (!admin) {
+      return res.status(401).json({ message: "Admin not found" });
+    }
+
+    req.admin = admin;
     next();
   } catch (err) {
-    return res.status(403).json({ message: "Invalid token" });
+    return res.status(401).json({ message: "Invalid admin token" });
   }
 };
 
 module.exports = verifyAdminToken;
-

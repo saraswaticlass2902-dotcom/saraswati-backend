@@ -20,7 +20,9 @@ const chatRoutes = require("./routes/chatRoutes");
 const alluser = require("./routes/authRoute");
 const purchaseRoutes = require("./routes/purchaseRoutes");
 const lectureRoutes = require("./routes/lectureRoutes");
-const houseRoutes = require("./routes/houseRoutes");
+const courseRoutes = require("./routes/courseRoutes");
+
+
 
 // Models (only import if used here)
 const Chat = require("./models/chatModel");
@@ -92,6 +94,8 @@ async function start() {
 
     // register routes AFTER DB connect (safe)
     app.use("/api/auth", authRoute);
+    app.use("/api/profile", require("./routes/profileRoute"));
+
     app.use("/api/transaction", transactionRoute);
     app.use("/api/stock", stockRoute);
     app.use("/api/profile", profileRoutes);
@@ -99,10 +103,9 @@ async function start() {
     app.use("/api", contactRoutes);
     app.use("/api/chat", chatRoutes);
     app.use("/api/registration", alluser);
-    app.use("/api/houses", houseRoutes);
     app.use("/api/purchases", purchaseRoutes);
     app.use("/api/lectures", lectureRoutes);
-
+    app.use("/api/courses", courseRoutes);
     // Create HTTP server and Socket.IO AFTER DB connected
     const server = http.createServer(app);
     global.__httpServer = server; // for gracefulClose access
