@@ -270,6 +270,51 @@ exports.registerUser = [
   },
 ];
 // ================= LOGIN USER =================
+// exports.loginUser = async (req, res) => {
+//   try {
+//     const { email, password } = req.body;
+//     const normalized = String(email).toLowerCase().trim();
+
+//     const user = await Registration.findOne({ email: normalized });
+//     if (!user || !user.password) {
+//       return res.status(401).json({ ok: false, message: "Invalid credentials" });
+//     }
+
+//     const isMatch = await bcrypt.compare(String(password), user.password);
+//     if (!isMatch) {
+//       return res.status(401).json({ ok: false, message: "Invalid credentials" });
+//     }
+
+//     const token = jwt.sign(
+//       { id: user._id, email: user.email, role: user.role },
+//       process.env.JWT_SECRET,
+//       { expiresIn: "3d" }
+//     );
+
+//     // 🔥 COOKIE (IMPORTANT)
+//     res.cookie("token", token, {
+//       httpOnly: true,
+//       secure: false,       // localhost
+//       sameSite: "lax",     // VERY IMPORTANT
+//       maxAge: 3 * 24 * 60 * 60 * 1000,
+//     });
+
+//     return res.status(200).json({
+//       ok: true, // 🔥 MUST
+//       message: "Login successful",
+//       user: {
+//         id: user._id,
+//         email: user.email,
+//         role: user.role,
+//       },
+//     });
+//   } catch (err) {
+//     console.error("loginUser error:", err);
+//     return res.status(500).json({ ok: false, message: "Server error" });
+//   }
+// };
+
+// ================= LOGIN USER =================
 exports.loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -291,16 +336,16 @@ exports.loginUser = async (req, res) => {
       { expiresIn: "3d" }
     );
 
-    // 🔥 COOKIE (IMPORTANT)
+    // 🔥 PRODUCTION-SAFE COOKIE
     res.cookie("token", token, {
       httpOnly: true,
-      secure: false,       // localhost
-      sameSite: "lax",     // VERY IMPORTANT
+      secure: process.env.NODE_ENV === "production", // ✅ true on Render
+      sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax",
       maxAge: 3 * 24 * 60 * 60 * 1000,
     });
 
     return res.status(200).json({
-      ok: true, // 🔥 MUST
+      ok: true,
       message: "Login successful",
       user: {
         id: user._id,
