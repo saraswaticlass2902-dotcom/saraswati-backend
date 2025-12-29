@@ -1,43 +1,51 @@
 const express = require("express");
 const router = express.Router();
-const authController = require("../controllers/authController");
 
-// ✅ Correct middleware path
+const authController = require("../controllers/authController");
 const defaultAuth = require("../middleware/defaultAuth");
 
-// -------- User Registration --------
+/* ================= USER AUTH ================= */
+
+// 🔹 STEP 1: Check email & send OTP
+router.post("/check-email", authController.checkEmail);
+
+// 🔹 STEP 2: Verify OTP
+router.post("/verify-otp", authController.verifyOtp);
+
+// 🔹 STEP 3: Register user (after OTP verified)
 router.post("/register", authController.registerUser);
 
-// -------- Login / Logout --------
+// 🔹 Login / Logout
 router.post("/login", authController.loginUser);
 router.post("/logout", authController.logout);
 
-// -------- Forgot Password --------
+// 🔹 Forgot password (send OTP)
 router.post("/forgot-password", authController.forgotPassword);
 
-// -------- Verify OTP --------
-router.post("/verify-otp", authController.verifyOtp);
+/* ================= PROTECTED ROUTES ================= */
 
-// -------- Check Email --------
-router.post("/check-email", authController.checkEmail);
+// 🔐 Change password
+router.post("/change-password", defaultAuth, authController.changePassword);
 
-// 🔐 CHANGE PASSWORD
+// 🔐 Delete account (OTP flow)
 router.post(
-  "/change-password",
+  "/delete-account-otp",
   defaultAuth,
-  authController.changePassword
+  authController.sendDeleteOtp
 );
 
-// 🔐 DELETE ACCOUNT WITH OTP (ONLY WAY)
-router.post("/delete-account-otp", defaultAuth, authController.sendDeleteOtp);
-router.post("/verify-delete-otp", defaultAuth, authController.verifyDeleteOtp);
+router.post(
+  "/verify-delete-otp",
+  defaultAuth,
+  authController.verifyDeleteOtp
+);
 
-
-// 🔥 SESSION CHECK
+// 🔥 Session check (used by frontend)
 router.get("/me", defaultAuth, (req, res) => {
   res.status(200).json({
     ok: true,
     user: {
+      id: req.user._id,
       email: req.user.email,
       role: req.user.role,
     },

@@ -194,81 +194,138 @@ exports.verifyOtp = [
 ];
 
 
+// exports.registerUser = [
+//   body("username").trim().notEmpty().withMessage("Username is required"),
+//   body("email").isEmail().withMessage("Valid email required"),
+//   body("password").isLength({ min: 6 }).withMessage("Password must be at least 6 characters"),
+//   body("otpToken").optional().isString(),
+
+//   async (req, res) => {
+//     const errors = validationResult(req);
+//     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+//     try {
+//       let { username, email, password, otpToken } = req.body;
+//       const normalized = String(email).toLowerCase().trim();
+//       username = String(username).trim();
+
+//       // 1) ensure user not already exists
+//       const existing = await Registration.findOne({ email: normalized });
+//       if (existing && existing.password) {
+//         return res.status(400).json({ message: "User already exists" });
+//       }
+
+//       // 2) Verify OTP record exists and is verified
+//       let verification;
+//       if (otpToken) {
+//         verification = await Verification.findOne({ email: normalized, otpToken, purpose: "register" });
+//       } else {
+//         verification = await Verification.findOne({ email: normalized, purpose: "register", verified: true }).sort({ createdAt: -1 });
+//       }
+
+//       if (!verification || !verification.verified) {
+//         return res.status(400).json({ message: "Email not verified. Complete OTP verification first." });
+//       }
+
+//       // 3) Create user (or update existing placeholder record)
+//       const hashedPassword = await bcrypt.hash(String(password), 10);
+//       const user = await Registration.findOneAndUpdate(
+//         { email: normalized },
+//         { username, email: normalized, password: hashedPassword, role: "user" },
+//         { upsert: true, new: true, setDefaultsOnInsert: true }
+//       );
+
+//       // 4) Clean up register verifications for this email
+//       await Verification.deleteMany({ email: normalized, purpose: "register" });
+
+//       // 5) Send welcome email (async)
+//       (async () => {
+//         try {
+//           await transporter.sendMail({
+//             from: EMAIL_FROM,
+//             to: normalized,
+//             subject: "🎉 Welcome to Saraswati Classes — Registration Complete!",
+//             html: `
+//               <div style="font-family: Arial, sans-serif; padding:20px; text-align:center;">
+//                 <h2 style="color:#0d6efd;">Welcome, ${username}!</h2>
+//                 <p>Your account has been created successfully. Login to continue.</p>
+//                 <a href="${process.env.CLIENT_URL || "http://localhost:3000"}/login" style="display:inline-block; padding:10px 18px; background:#0d6efd; color:#fff; border-radius:6px; text-decoration:none;">Login Now</a>
+//               </div>
+//             `,
+//           });
+//         } catch (err) {
+//           console.error("Welcome email error:", err && err.message ? err.message : err);
+//         }
+//       })();
+
+//       // return minimal user info only
+//       return res.status(201).json({
+//         message: "Registration successful",
+//         user: { id: user._id.toString(), email: user.email, username: user.username }
+//       });
+//     } catch (err) {
+//       console.error("registerUser error:", err);
+//       return res.status(500).json({ message: "Server error during registration" });
+//     }
+//   },
+// ];
+
 exports.registerUser = [
-  body("username").trim().notEmpty().withMessage("Username is required"),
-  body("email").isEmail().withMessage("Valid email required"),
-  body("password").isLength({ min: 6 }).withMessage("Password must be at least 6 characters"),
-  body("otpToken").optional().isString(),
+  body("username").notEmpty(),
+  body("email").isEmail(),
+  body("password").isLength({ min: 6 }),
+  body("otpToken").notEmpty(),
 
   async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-
     try {
       let { username, email, password, otpToken } = req.body;
-      const normalized = String(email).toLowerCase().trim();
-      username = String(username).trim();
+      email = email.toLowerCase().trim();
+      username = username.trim();
 
-      // 1) ensure user not already exists
-      const existing = await Registration.findOne({ email: normalized });
-      if (existing && existing.password) {
+      const exists = await Registration.findOne({ email });
+      if (exists) {
         return res.status(400).json({ message: "User already exists" });
       }
 
-      // 2) Verify OTP record exists and is verified
-      let verification;
-      if (otpToken) {
-        verification = await Verification.findOne({ email: normalized, otpToken, purpose: "register" });
-      } else {
-        verification = await Verification.findOne({ email: normalized, purpose: "register", verified: true }).sort({ createdAt: -1 });
+      const verifiedOtp = await Verification.findOne({
+        email,
+        otpToken,
+        purpose: "register",
+        verified: true,
+      });
+
+      if (!verifiedOtp) {
+        return res
+          .status(400)
+          .json({ message: "Email not verified" });
       }
 
-      if (!verification || !verification.verified) {
-        return res.status(400).json({ message: "Email not verified. Complete OTP verification first." });
-      }
+      const hashedPassword = await bcrypt.hash(password, 10);
 
-      // 3) Create user (or update existing placeholder record)
-      const hashedPassword = await bcrypt.hash(String(password), 10);
-      const user = await Registration.findOneAndUpdate(
-        { email: normalized },
-        { username, email: normalized, password: hashedPassword, role: "user" },
-        { upsert: true, new: true, setDefaultsOnInsert: true }
-      );
+      const user = await Registration.create({
+        username,
+        email,
+        password: hashedPassword,
+        role: "user",
+      });
 
-      // 4) Clean up register verifications for this email
-      await Verification.deleteMany({ email: normalized, purpose: "register" });
+      await Verification.deleteMany({ email, purpose: "register" });
 
-      // 5) Send welcome email (async)
-      (async () => {
-        try {
-          await transporter.sendMail({
-            from: EMAIL_FROM,
-            to: normalized,
-            subject: "🎉 Welcome to Saraswati Classes — Registration Complete!",
-            html: `
-              <div style="font-family: Arial, sans-serif; padding:20px; text-align:center;">
-                <h2 style="color:#0d6efd;">Welcome, ${username}!</h2>
-                <p>Your account has been created successfully. Login to continue.</p>
-                <a href="${process.env.CLIENT_URL || "http://localhost:3000"}/login" style="display:inline-block; padding:10px 18px; background:#0d6efd; color:#fff; border-radius:6px; text-decoration:none;">Login Now</a>
-              </div>
-            `,
-          });
-        } catch (err) {
-          console.error("Welcome email error:", err && err.message ? err.message : err);
-        }
-      })();
-
-      // return minimal user info only
       return res.status(201).json({
         message: "Registration successful",
-        user: { id: user._id.toString(), email: user.email, username: user.username }
+        user: {
+          id: user._id,
+          email: user.email,
+          username: user.username,
+        },
       });
     } catch (err) {
-      console.error("registerUser error:", err);
-      return res.status(500).json({ message: "Server error during registration" });
+      console.error(err);
+      return res.status(500).json({ message: "Server error" });
     }
   },
 ];
+
 // ================= LOGIN USER =================
 // exports.loginUser = async (req, res) => {
 //   try {
@@ -336,11 +393,11 @@ exports.loginUser = async (req, res) => {
       { expiresIn: "3d" }
     );
 
-    // 🔥 PRODUCTION-SAFE COOKIE
+    // 🔥 FORCE CROSS-DOMAIN COOKIE (VERCEL + RENDER)
     res.cookie("token", token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production", // ✅ true on Render
-      sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax",
+      secure: true,        // ⭐ MUST
+      sameSite: "None",    // ⭐ MUST
       maxAge: 3 * 24 * 60 * 60 * 1000,
     });
 
@@ -358,6 +415,7 @@ exports.loginUser = async (req, res) => {
     return res.status(500).json({ ok: false, message: "Server error" });
   }
 };
+
 
 
 exports.forgotPassword = [
