@@ -82,12 +82,19 @@ exports.adminLogin = async (req, res) => {
     );
 
     // 🔥 SAME COOKIE NAME
+    // res.cookie("token", token, {
+    //   httpOnly: true,
+    //   secure: process.env.NODE_ENV === "production",
+    //   sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax",
+    //   maxAge: 3 * 24 * 60 * 60 * 1000,
+    // });
+
     res.cookie("token", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax",
-      maxAge: 3 * 24 * 60 * 60 * 1000,
-    });
+  httpOnly: true,
+  secure: true,        // 🔥 MUST (Vercel + Render)
+  sameSite: "None",    // 🔥 MUST
+  maxAge: 3 * 24 * 60 * 60 * 1000,
+});
 
     // 🔥 IMPORTANT RESPONSE
     return res.status(200).json({
