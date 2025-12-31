@@ -654,14 +654,15 @@ const { v4: uuidv4 } = require("uuid");
    BREVO SMTP CONFIG
 ====================================================== */
 const transporter = nodemailer.createTransport({
-  host: process.env.BREVO_SMTP_HOST, // smtp-relay.brevo.com
-  port: Number(process.env.BREVO_SMTP_PORT || 587),
-  secure: false,
+  host: process.env.BREVO_SMTP_HOST,
+  port: Number(process.env.BREVO_SMTP_PORT), // 465
+  secure: true, // 🔥 MUST for 465
   auth: {
     user: process.env.BREVO_SMTP_USER,
     pass: process.env.BREVO_SMTP_PASS,
   },
 });
+
 
 const EMAIL_FROM = process.env.EMAIL_FROM;
 
