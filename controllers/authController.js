@@ -483,12 +483,30 @@ exports.forgotPassword = [
   },
 ];
 // ================= LOGOUT USER =================
+// exports.logout = (req, res) => {
+//   try {
+//     res.clearCookie("token", {
+//       httpOnly: true,
+//       secure: false,      // localhost साठी false, production मध्ये true
+//       sameSite: "lax",    // VERY IMPORTANT (match login cookie)
+//     });
+
+//     return res.status(200).json({
+//       ok: true,
+//       message: "Logged out successfully",
+//     });
+//   } catch (err) {
+//     console.error("logout error:", err);
+//     return res.status(500).json({ ok: false, message: "Logout failed" });
+//   }
+// };
 exports.logout = (req, res) => {
   try {
     res.clearCookie("token", {
       httpOnly: true,
-      secure: false,      // localhost साठी false, production मध्ये true
-      sameSite: "lax",    // VERY IMPORTANT (match login cookie)
+      sameSite: "lax",
+      secure: false,
+      path: "/",        // 🔥 MUST MATCH
     });
 
     return res.status(200).json({
