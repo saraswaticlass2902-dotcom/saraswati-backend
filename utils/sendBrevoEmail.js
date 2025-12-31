@@ -27,3 +27,6 @@ const sendBrevoEmail = async ({ to, subject, html }) => {
 };
 
 module.exports = sendBrevoEmail;
+console.log("👉 BREVO_API_KEY:", process.env.BREVO_API_KEY ? "OK" : "MISSING");
+console.log("👉 SENDER_EMAIL:", process.env.BREVO_SENDER_EMAIL);
+console.log("👉 SENDER_NAME:", process.env.BREVO_SENDER_NAME);
