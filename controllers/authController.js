@@ -637,6 +637,273 @@
 // };
 // controllers/authController.js
 
+// const Registration = require("../models/Registration");
+// const Verification = require("../models/Verification");
+// const Transaction = require("../models/Transaction");
+// const Balance = require("../models/Balance");
+// const Stock = require("../models/Stock");
+
+// const bcrypt = require("bcrypt");
+// const crypto = require("crypto");
+// const jwt = require("jsonwebtoken");
+// const nodemailer = require("nodemailer");
+// const { body } = require("express-validator");
+// const { v4: uuidv4 } = require("uuid");
+
+// /* ======================================================
+//    BREVO SMTP (RENDER SAFE)
+// ====================================================== */
+// const transporter = nodemailer.createTransport({
+//   host: process.env.BREVO_SMTP_HOST,       // smtp-relay.brevo.com
+//   port: Number(process.env.BREVO_SMTP_PORT), // 587
+//   secure: false,                           // ❗ MUST false
+//   auth: {
+//     user: process.env.BREVO_SMTP_USER,     // xxx@smtp-brevo.com
+//     pass: process.env.BREVO_SMTP_PASS,     // SMTP KEY
+//   },
+// });
+
+// const EMAIL_FROM = process.env.EMAIL_FROM;
+
+// // Verify once (non-blocking)
+// transporter.verify()
+//   .then(() => console.log("✅ Brevo SMTP connected"))
+//   .catch(err => console.error("❌ Brevo SMTP error:", err.message));
+
+// /* ======================================================
+//    HELPERS
+// ====================================================== */
+// const generateOtp = () =>
+//   Math.floor(100000 + Math.random() * 900000).toString();
+
+// const hashOtp = (otp) =>
+//   crypto.createHash("sha256").update(String(otp)).digest("hex");
+
+// /* ======================================================
+//    STEP 1: CHECK EMAIL + SEND OTP
+// ====================================================== */
+// exports.checkEmail = [
+//   body("email").isEmail(),
+//   async (req, res) => {
+//     try {
+//       const { email } = req.body;
+//       const normalized = email.toLowerCase().trim();
+
+//       const exists = await Registration.findOne({ email: normalized });
+//       if (exists) {
+//         return res.json({ exists: true, message: "Email already registered" });
+//       }
+
+//       const otp = generateOtp();
+//       const otpHash = hashOtp(otp);
+//       const otpToken = uuidv4();
+
+//       await Verification.create({
+//         email: normalized,
+//         otpHash,
+//         otpToken,
+//         purpose: "register",
+//         expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+//         attempts: 0,
+//         verified: false,
+//       });
+
+//       await sendEmail({
+//         to: normalized,
+//         subject: "Saraswati Classes - OTP Verification",
+//         html: `
+//           <div style="font-family:Arial;text-align:center">
+//             <h2>Saraswati Classes</h2>
+//             <p>Your OTP (valid for 10 minutes)</p>
+//             <h1 style="letter-spacing:5px">${otp}</h1>
+//             <p>Do not share this OTP.</p>
+//           </div>
+//         `,
+//       });
+
+//       res.json({
+//         exists: false,
+//         otpToken,
+//         message: "OTP sent successfully",
+//       });
+//     } catch (err) {
+//       console.error("checkEmail:", err.message);
+//       res.status(500).json({ message: "Server error" });
+//     }
+//   },
+// ];
+
+// /* ======================================================
+//    STEP 2: VERIFY OTP
+// ====================================================== */
+// exports.verifyOtp = [
+//   body("email").isEmail(),
+//   body("otp").isLength({ min: 6, max: 6 }),
+//   async (req, res) => {
+//     try {
+//       const { email, otp, otpToken } = req.body;
+//       const normalized = email.toLowerCase().trim();
+
+//       const record = await Verification.findOne({
+//         email: normalized,
+//         otpToken,
+//       });
+
+//       if (!record) return res.status(400).json({ message: "Invalid OTP" });
+//       if (record.expiresAt < new Date())
+//         return res.status(400).json({ message: "OTP expired" });
+
+//       record.attempts++;
+//       if (record.attempts > 5) {
+//         await record.save();
+//         return res.status(429).json({ message: "Too many attempts" });
+//       }
+
+//       if (hashOtp(otp) !== record.otpHash) {
+//         await record.save();
+//         return res.status(400).json({ message: "Invalid OTP" });
+//       }
+
+//       record.verified = true;
+//       await record.save();
+
+//       res.json({ success: true, message: "OTP verified" });
+//     } catch (err) {
+//       console.error("verifyOtp:", err.message);
+//       res.status(500).json({ message: "Server error" });
+//     }
+//   },
+// ];
+
+// exports.registerUser = [
+//   body("username").notEmpty(),
+//   body("email").isEmail(),
+//   body("password").isLength({ min: 6 }),
+//   body("otpToken").notEmpty(),
+//   async (req, res) => {
+//     try {
+//       let { username, email, password, otpToken } = req.body;
+//       email = email.toLowerCase().trim();
+
+//       const verified = await Verification.findOne({
+//         email,
+//         otpToken,
+//         verified: true,
+//         purpose: "register",
+//       });
+
+//       if (!verified)
+//         return res.status(400).json({ message: "Email not verified" });
+
+//       const hashed = await bcrypt.hash(password, 10);
+
+//       const user = await Registration.create({
+//         username,
+//         email,
+//         password: hashed,
+//         role: "user",
+//       });
+
+//       await Verification.deleteMany({ email });
+
+//       res.status(201).json({
+//         message: "Registration successful",
+//         user: { id: user._id, email: user.email },
+//       });
+//     } catch (err) {
+//       console.error("registerUser:", err.message);
+//       res.status(500).json({ message: "Server error" });
+//     }
+//   },
+// ];
+// /* ======================================================
+//    LOGIN
+// ====================================================== */
+// exports.loginUser = async (req, res) => {
+//   try {
+//     const { email, password } = req.body;
+//     const normalized = email.toLowerCase().trim();
+
+//     const user = await Registration.findOne({ email: normalized });
+//     if (!user) return res.status(401).json({ message: "Invalid credentials" });
+
+//     const ok = await bcrypt.compare(password, user.password);
+//     if (!ok) return res.status(401).json({ message: "Invalid credentials" });
+
+//     const token = jwt.sign(
+//       { id: user._id, email: user.email, role: user.role },
+//       process.env.JWT_SECRET,
+//       { expiresIn: "3d" }
+//     );
+
+//     res.cookie("token", token, {
+//       httpOnly: true,
+//       secure: true,
+//       sameSite: "None",
+//       path: "/",
+//       maxAge: 3 * 24 * 60 * 60 * 1000,
+//     });
+
+//     res.json({ ok: true, message: "Login successful" });
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ message: "Server error" });
+//   }
+// };
+
+// /* ======================================================
+//    LOGOUT
+// ====================================================== */
+// exports.logout = (req, res) => {
+//   res.clearCookie("token", {
+//     httpOnly: true,
+//     secure: true,
+//     sameSite: "None",
+//     path: "/",
+//   });
+//   res.json({ ok: true, message: "Logged out successfully" });
+// };
+
+// /* ======================================================
+//    FORGOT PASSWORD (SEND OTP)
+// ====================================================== */
+// exports.forgotPassword = async (req, res) => {
+//   try {
+//     const email = req.body.email.toLowerCase().trim();
+
+//     const user = await Registration.findOne({ email });
+//     if (!user) return res.status(404).json({ message: "User not found" });
+
+//     const otp = generateOtp();
+//     const otpHash = hashOtp(otp);
+//     const otpToken = uuidv4();
+
+//     await Verification.create({
+//       email,
+//       otpHash,
+//       otpToken,
+//       purpose: "forgot",
+//       expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+//       attempts: 0,
+//       verified: false,
+//     });
+
+//     await transporter.sendMail({
+//       from: EMAIL_FROM,
+//       to: email,
+//       subject: "Password Reset OTP",
+//       html: `<h2>Your OTP: ${otp}</h2>`,
+//     });
+
+//     res.json({ success: true, otpToken });
+//   } catch (err) {
+//     console.error("forgotPassword:", err);
+//     res.status(500).json({ message: "Server error" });
+//   }
+// };
+
+
+
 const Registration = require("../models/Registration");
 const Verification = require("../models/Verification");
 const Transaction = require("../models/Transaction");
@@ -646,30 +913,10 @@ const Stock = require("../models/Stock");
 const bcrypt = require("bcrypt");
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
-const nodemailer = require("nodemailer");
-const { body, validationResult } = require("express-validator");
+const { body } = require("express-validator");
 const { v4: uuidv4 } = require("uuid");
 
-/* ======================================================
-   BREVO SMTP CONFIG
-====================================================== */
-const transporter = nodemailer.createTransport({
-  host: process.env.BREVO_SMTP_HOST,
-  port: Number(process.env.BREVO_SMTP_PORT), // 465
-  secure: true, // 🔥 MUST for 465
-  auth: {
-    user: process.env.BREVO_SMTP_USER,
-    pass: process.env.BREVO_SMTP_PASS,
-  },
-});
-
-
-const EMAIL_FROM = process.env.EMAIL_FROM;
-
-// Verify SMTP once
-transporter.verify()
-  .then(() => console.log("✅ Brevo SMTP connected"))
-  .catch(err => console.error("❌ Brevo SMTP error:", err.message));
+const sendBrevoEmail = require("../utils/sendBrevoEmail");
 
 /* ======================================================
    HELPERS
@@ -681,7 +928,7 @@ const hashOtp = (otp) =>
   crypto.createHash("sha256").update(String(otp)).digest("hex");
 
 /* ======================================================
-   STEP 1: CHECK EMAIL + SEND OTP
+   STEP 1: CHECK EMAIL + SEND REGISTER OTP
 ====================================================== */
 exports.checkEmail = [
   body("email").isEmail(),
@@ -709,32 +956,33 @@ exports.checkEmail = [
         verified: false,
       });
 
-      await transporter.sendMail({
-        from: EMAIL_FROM,
+      await sendBrevoEmail({
         to: normalized,
         subject: "Saraswati Classes - OTP Verification",
         html: `
-          <h2>Saraswati Classes</h2>
-          <p>Your OTP (valid for 10 minutes)</p>
-          <h1>${otp}</h1>
-          <p>Do not share this OTP.</p>
+          <div style="font-family:Arial;text-align:center">
+            <h2>Saraswati Classes</h2>
+            <p>Your OTP (valid for 10 minutes)</p>
+            <h1 style="letter-spacing:5px">${otp}</h1>
+            <p>Do not share this OTP.</p>
+          </div>
         `,
       });
 
       res.json({
         exists: false,
         otpToken,
-        message: "OTP sent to email",
+        message: "OTP sent successfully",
       });
     } catch (err) {
-      console.error(err);
+      console.error("checkEmail:", err.message);
       res.status(500).json({ message: "Server error" });
     }
   },
 ];
 
 /* ======================================================
-   STEP 2: VERIFY OTP
+   STEP 2: VERIFY REGISTER OTP
 ====================================================== */
 exports.verifyOtp = [
   body("email").isEmail(),
@@ -753,8 +1001,8 @@ exports.verifyOtp = [
       if (record.expiresAt < new Date())
         return res.status(400).json({ message: "OTP expired" });
 
-      record.attempts += 1;
-      if (record.attempts > 6) {
+      record.attempts++;
+      if (record.attempts > 5) {
         await record.save();
         return res.status(429).json({ message: "Too many attempts" });
       }
@@ -769,21 +1017,20 @@ exports.verifyOtp = [
 
       res.json({ success: true, message: "OTP verified" });
     } catch (err) {
-      console.error(err);
+      console.error("verifyOtp:", err.message);
       res.status(500).json({ message: "Server error" });
     }
   },
 ];
 
 /* ======================================================
-   STEP 3: REGISTER USER
+   REGISTER USER
 ====================================================== */
 exports.registerUser = [
   body("username").notEmpty(),
   body("email").isEmail(),
   body("password").isLength({ min: 6 }),
   body("otpToken").notEmpty(),
-
   async (req, res) => {
     try {
       let { username, email, password, otpToken } = req.body;
@@ -792,8 +1039,8 @@ exports.registerUser = [
       const verified = await Verification.findOne({
         email,
         otpToken,
-        purpose: "register",
         verified: true,
+        purpose: "register",
       });
 
       if (!verified)
@@ -808,14 +1055,14 @@ exports.registerUser = [
         role: "user",
       });
 
-      await Verification.deleteMany({ email, purpose: "register" });
+      await Verification.deleteMany({ email });
 
       res.status(201).json({
         message: "Registration successful",
         user: { id: user._id, email: user.email },
       });
     } catch (err) {
-      console.error(err);
+      console.error("registerUser:", err.message);
       res.status(500).json({ message: "Server error" });
     }
   },
@@ -851,7 +1098,6 @@ exports.loginUser = async (req, res) => {
 
     res.json({ ok: true, message: "Login successful" });
   } catch (err) {
-    console.error(err);
     res.status(500).json({ message: "Server error" });
   }
 };
@@ -874,10 +1120,9 @@ exports.logout = (req, res) => {
 ====================================================== */
 exports.forgotPassword = async (req, res) => {
   try {
-    const { email } = req.body;
-    const normalized = email.toLowerCase().trim();
+    const email = req.body.email.toLowerCase().trim();
 
-    const user = await Registration.findOne({ email: normalized });
+    const user = await Registration.findOne({ email });
     if (!user) return res.status(404).json({ message: "User not found" });
 
     const otp = generateOtp();
@@ -885,7 +1130,7 @@ exports.forgotPassword = async (req, res) => {
     const otpToken = uuidv4();
 
     await Verification.create({
-      email: normalized,
+      email,
       otpHash,
       otpToken,
       purpose: "forgot",
@@ -894,16 +1139,73 @@ exports.forgotPassword = async (req, res) => {
       verified: false,
     });
 
-    await transporter.sendMail({
-      from: EMAIL_FROM,
-      to: normalized,
+    await sendBrevoEmail({
+      to: email,
       subject: "Password Reset OTP",
       html: `<h2>Your OTP: ${otp}</h2>`,
     });
 
     res.json({ success: true, otpToken });
   } catch (err) {
-    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+/* ======================================================
+   DELETE ACCOUNT OTP
+====================================================== */
+exports.sendDeleteOtp = async (req, res) => {
+  try {
+    const user = await Registration.findById(req.user._id);
+
+    const otp = generateOtp();
+    await Verification.create({
+      email: user.email,
+      otpHash: hashOtp(otp),
+      purpose: "delete",
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+      attempts: 0,
+      verified: false,
+    });
+
+    await sendBrevoEmail({
+      to: user.email,
+      subject: "Delete Account OTP",
+      html: `<h2>Your OTP: ${otp}</h2>`,
+    });
+
+    res.json({ ok: true, message: "Delete OTP sent" });
+  } catch (err) {
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+/* ======================================================
+   VERIFY DELETE OTP + FULL CLEANUP
+====================================================== */
+exports.verifyDeleteOtp = async (req, res) => {
+  try {
+    const { otp } = req.body;
+    const user = await Registration.findById(req.user._id);
+
+    const record = await Verification.findOne({
+      email: user.email,
+      purpose: "delete",
+      verified: false,
+    }).sort({ createdAt: -1 });
+
+    if (!record || hashOtp(otp) !== record.otpHash)
+      return res.status(400).json({ message: "Invalid OTP" });
+
+    await Transaction.deleteMany({ email: user.email });
+    await Balance.deleteMany({ email: user.email });
+    await Stock.deleteMany({ email: user.email });
+    await Registration.deleteOne({ _id: user._id });
+    await Verification.deleteMany({ email: user.email });
+
+    res.clearCookie("token", { path: "/" });
+    res.json({ ok: true, message: "Account deleted permanently" });
+  } catch (err) {
     res.status(500).json({ message: "Server error" });
   }
 };
@@ -929,61 +1231,12 @@ exports.changePassword = async (req, res) => {
   }
 };
 
-/* ======================================================
-   DELETE ACCOUNT OTP
-====================================================== */
-exports.sendDeleteOtp = async (req, res) => {
-  try {
-    const user = await Registration.findById(req.user._id);
-
-    const otp = generateOtp();
-    await Verification.create({
-      email: user.email,
-      otpHash: hashOtp(otp),
-      purpose: "delete",
-      expiresAt: new Date(Date.now() + 5 * 60 * 1000),
-      attempts: 0,
-      verified: false,
-    });
-
-    await transporter.sendMail({
-      from: EMAIL_FROM,
-      to: user.email,
-      subject: "Delete Account OTP",
-      html: `<h2>Your OTP: ${otp}</h2>`,
-    });
-
-    res.json({ ok: true, message: "Delete OTP sent" });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
-  }
-};
-
-exports.verifyDeleteOtp = async (req, res) => {
-  try {
-    const { otp } = req.body;
-    const user = await Registration.findById(req.user._id);
-
-    const record = await Verification.findOne({
-      email: user.email,
-      purpose: "delete",
-      verified: false,
-    }).sort({ createdAt: -1 });
-
-    if (!record || hashOtp(otp) !== record.otpHash)
-      return res.status(400).json({ message: "Invalid OTP" });
-
-    await Transaction.deleteMany({ email: user.email });
-    await Balance.deleteMany({ email: user.email });
-    await Stock.deleteMany({ email: user.email });
-    await Registration.deleteOne({ _id: user._id });
-    await Verification.deleteMany({ email: user.email });
-
-    res.clearCookie("token", { path: "/" });
-    res.json({ ok: true, message: "Account deleted" });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
-  }
+exports.logout = (req, res) => {
+  res.clearCookie("token", {
+    httpOnly: true,
+    secure: true,
+    sameSite: "None",
+    path: "/",
+  });
+  res.json({ ok: true, message: "Logged out successfully" });
 };
