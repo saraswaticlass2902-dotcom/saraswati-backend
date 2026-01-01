@@ -1065,3 +1065,39 @@ exports.saveFirebaseUser = async (req, res) => {
     return res.status(500).json({ ok: false });
   }
 };
+
+
+exports.changePassword = async (req, res) => {
+  try {
+    const { oldPassword, newPassword } = req.body;
+
+    if (!oldPassword || !newPassword) {
+      return res.status(400).json({ error: "Missing fields" });
+    }
+
+    // 🔐 Logged-in user (from JWT middleware)
+    const user = await Registration.findById(req.user._id);
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // 🔍 Old password check
+    const isMatch = await bcrypt.compare(oldPassword, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ error: "Old password is incorrect" });
+    }
+
+    // 🔒 Hash new password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+    user.password = hashedPassword;
+    await user.save();
+
+    return res.json({ ok: true, message: "Password changed successfully" });
+  } catch (err) {
+    console.error("Change password error:", err);
+    return res.status(500).json({ error: "Server error" });
+  }
+};
