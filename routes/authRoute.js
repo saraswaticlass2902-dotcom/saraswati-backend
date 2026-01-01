@@ -78,6 +78,8 @@ router.post("/logout", authController.logout);
 router.post("/change-password", defaultAuth, authController.changePassword);
 /* ================= PROTECTED ROUTES ================= */
 
+router.post("/reset-password", authController.resetPassword);
+
 router.get("/me", defaultAuth, (req, res) => {
   res.status(200).json({
     ok: true,

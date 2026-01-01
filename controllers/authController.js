@@ -1101,3 +1101,31 @@ exports.changePassword = async (req, res) => {
     return res.status(500).json({ error: "Server error" });
   }
 };
+
+exports.resetPassword = async (req, res) => {
+  try {
+    const { email, newPassword } = req.body;
+
+    if (!email || !newPassword) {
+      return res.status(400).json({ message: "Invalid data" });
+    }
+
+    const user = await Registration.findOne({
+      email: email.toLowerCase().trim(),
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const hashed = await bcrypt.hash(newPassword, 10);
+    user.password = hashed;
+    await user.save();
+
+    res.json({ ok: true, message: "Password reset successful" });
+
+  } catch (err) {
+    console.error("resetPassword:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
