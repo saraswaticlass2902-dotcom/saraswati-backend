@@ -903,148 +903,61 @@
 // };
 
 
+const { body, validationResult } = require("express-validator");
+const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
 
 const Registration = require("../models/Registration");
-const Verification = require("../models/Verification");
-const Transaction = require("../models/Transaction");
-const Balance = require("../models/Balance");
-const Stock = require("../models/Stock");
 
-const bcrypt = require("bcrypt");
-const crypto = require("crypto");
-const jwt = require("jsonwebtoken");
-const { body } = require("express-validator");
-const { v4: uuidv4 } = require("uuid");
-
-const sendBrevoEmail = require("../utils/sendBrevoEmail");
-
-/* ======================================================
-   HELPERS
-====================================================== */
-const generateOtp = () =>
-  Math.floor(100000 + Math.random() * 900000).toString();
-
-const hashOtp = (otp) =>
-  crypto.createHash("sha256").update(String(otp)).digest("hex");
-
-/* ======================================================
-   STEP 1: CHECK EMAIL + SEND REGISTER OTP
-====================================================== */
+/* =====================================================
+   🔍 CHECK EMAIL
+===================================================== */
 exports.checkEmail = [
-  body("email").isEmail(),
+  body("email").isEmail().withMessage("Invalid email"),
+
   async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ exists: false });
+    }
+
     try {
-      const { email } = req.body;
-      const normalized = email.toLowerCase().trim();
-
-      const exists = await Registration.findOne({ email: normalized });
-      if (exists) {
-        return res.json({ exists: true, message: "Email already registered" });
-      }
-
-      const otp = generateOtp();
-      const otpHash = hashOtp(otp);
-      const otpToken = uuidv4();
-
-      await Verification.create({
-        email: normalized,
-        otpHash,
-        otpToken,
-        purpose: "register",
-        expiresAt: new Date(Date.now() + 10 * 60 * 1000),
-        attempts: 0,
-        verified: false,
-      });
-
-      await sendBrevoEmail({
-        to: normalized,
-        subject: "Saraswati Classes - OTP Verification",
-        html: `
-          <div style="font-family:Arial;text-align:center">
-            <h2>Saraswati Classes</h2>
-            <p>Your OTP (valid for 10 minutes)</p>
-            <h1 style="letter-spacing:5px">${otp}</h1>
-            <p>Do not share this OTP.</p>
-          </div>
-        `,
-      });
-
-      res.json({
-        exists: false,
-        otpToken,
-        message: "OTP sent successfully",
-      });
+      const email = req.body.email.toLowerCase().trim();
+      const user = await Registration.findOne({ email });
+      res.json({ exists: !!user });
     } catch (err) {
-      console.error("checkEmail:", err.message);
-      res.status(500).json({ message: "Server error" });
+      console.error("checkEmail:", err);
+      res.status(500).json({ exists: false });
     }
   },
 ];
 
-/* ======================================================
-   STEP 2: VERIFY REGISTER OTP
-====================================================== */
-exports.verifyOtp = [
-  body("email").isEmail(),
-  body("otp").isLength({ min: 6, max: 6 }),
-  async (req, res) => {
-    try {
-      const { email, otp, otpToken } = req.body;
-      const normalized = email.toLowerCase().trim();
-
-      const record = await Verification.findOne({
-        email: normalized,
-        otpToken,
-      });
-
-      if (!record) return res.status(400).json({ message: "Invalid OTP" });
-      if (record.expiresAt < new Date())
-        return res.status(400).json({ message: "OTP expired" });
-
-      record.attempts++;
-      if (record.attempts > 5) {
-        await record.save();
-        return res.status(429).json({ message: "Too many attempts" });
-      }
-
-      if (hashOtp(otp) !== record.otpHash) {
-        await record.save();
-        return res.status(400).json({ message: "Invalid OTP" });
-      }
-
-      record.verified = true;
-      await record.save();
-
-      res.json({ success: true, message: "OTP verified" });
-    } catch (err) {
-      console.error("verifyOtp:", err.message);
-      res.status(500).json({ message: "Server error" });
-    }
-  },
-];
-
-/* ======================================================
-   REGISTER USER
-====================================================== */
+/* =====================================================
+   🧾 REGISTER USER (NO OTP)
+===================================================== */
 exports.registerUser = [
-  body("username").notEmpty(),
-  body("email").isEmail(),
-  body("password").isLength({ min: 6 }),
-  body("otpToken").notEmpty(),
+  body("username").notEmpty().withMessage("Username required"),
+  body("email").isEmail().withMessage("Valid email required"),
+  body("password")
+    .isLength({ min: 6 })
+    .withMessage("Password must be at least 6 characters"),
+
   async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
     try {
-      let { username, email, password, otpToken } = req.body;
+      let { username, email, password } = req.body;
       email = email.toLowerCase().trim();
 
-      const verified = await Verification.findOne({
-        email,
-        otpToken,
-        verified: true,
-        purpose: "register",
-      });
-
-      if (!verified)
-        return res.status(400).json({ message: "Email not verified" });
+      const existing = await Registration.findOne({ email });
+      if (existing) {
+        return res
+          .status(400)
+          .json({ message: "Email already registered" });
+      }
 
       const hashed = await bcrypt.hash(password, 10);
 
@@ -1053,34 +966,36 @@ exports.registerUser = [
         email,
         password: hashed,
         role: "user",
+        emailVerified: true,
       });
 
-      await Verification.deleteMany({ email });
-
       res.status(201).json({
+        ok: true,
         message: "Registration successful",
         user: { id: user._id, email: user.email },
       });
     } catch (err) {
-      console.error("registerUser:", err.message);
+      console.error("registerUser:", err);
       res.status(500).json({ message: "Server error" });
     }
   },
 ];
 
-/* ======================================================
-   LOGIN
-====================================================== */
+/* =====================================================
+   🔐 LOGIN
+===================================================== */
 exports.loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
     const normalized = email.toLowerCase().trim();
 
     const user = await Registration.findOne({ email: normalized });
-    if (!user) return res.status(401).json({ message: "Invalid credentials" });
+    if (!user)
+      return res.status(401).json({ message: "Invalid credentials" });
 
     const ok = await bcrypt.compare(password, user.password);
-    if (!ok) return res.status(401).json({ message: "Invalid credentials" });
+    if (!ok)
+      return res.status(401).json({ message: "Invalid credentials" });
 
     const token = jwt.sign(
       { id: user._id, email: user.email, role: user.role },
@@ -1098,13 +1013,14 @@ exports.loginUser = async (req, res) => {
 
     res.json({ ok: true, message: "Login successful" });
   } catch (err) {
+    console.error("loginUser:", err);
     res.status(500).json({ message: "Server error" });
   }
 };
 
-/* ======================================================
-   LOGOUT
-====================================================== */
+/* =====================================================
+   🚪 LOGOUT
+===================================================== */
 exports.logout = (req, res) => {
   res.clearCookie("token", {
     httpOnly: true,
@@ -1115,128 +1031,37 @@ exports.logout = (req, res) => {
   res.json({ ok: true, message: "Logged out successfully" });
 };
 
-/* ======================================================
-   FORGOT PASSWORD (SEND OTP)
-====================================================== */
-exports.forgotPassword = async (req, res) => {
+
+
+exports.saveFirebaseUser = async (req, res) => {
   try {
-    const email = req.body.email.toLowerCase().trim();
+    let { email, username, password } = req.body;
 
-    const user = await Registration.findOne({ email });
-    if (!user) return res.status(404).json({ message: "User not found" });
+    if (!email || !password) {
+      return res.status(400).json({ ok: false });
+    }
 
-    const otp = generateOtp();
-    const otpHash = hashOtp(otp);
-    const otpToken = uuidv4();
+    email = email.toLowerCase().trim();
 
-    await Verification.create({
-      email,
-      otpHash,
-      otpToken,
-      purpose: "forgot",
-      expiresAt: new Date(Date.now() + 10 * 60 * 1000),
-      attempts: 0,
-      verified: false,
-    });
+    let user = await Registration.findOne({ email });
 
-    await sendBrevoEmail({
-      to: email,
-      subject: "Password Reset OTP",
-      html: `<h2>Your OTP: ${otp}</h2>`,
-    });
+    if (!user) {
+      const hashed = await bcrypt.hash(password, 10);
 
-    res.json({ success: true, otpToken });
+      await Registration.create({
+        username: username || "User",
+        email,
+        password: hashed,      // ✅ satisfies schema
+        role: "user",
+        emailVerified: true,
+      });
+    }
+
+    return res.json({ ok: true });
   } catch (err) {
-    res.status(500).json({ message: "Server error" });
+    console.error("saveFirebaseUser:", err);
+    console.log("firebase-save body:", req.body);
+
+    return res.status(500).json({ ok: false });
   }
-};
-
-/* ======================================================
-   DELETE ACCOUNT OTP
-====================================================== */
-exports.sendDeleteOtp = async (req, res) => {
-  try {
-    const user = await Registration.findById(req.user._id);
-
-    const otp = generateOtp();
-    await Verification.create({
-      email: user.email,
-      otpHash: hashOtp(otp),
-      purpose: "delete",
-      expiresAt: new Date(Date.now() + 5 * 60 * 1000),
-      attempts: 0,
-      verified: false,
-    });
-
-    await sendBrevoEmail({
-      to: user.email,
-      subject: "Delete Account OTP",
-      html: `<h2>Your OTP: ${otp}</h2>`,
-    });
-
-    res.json({ ok: true, message: "Delete OTP sent" });
-  } catch (err) {
-    res.status(500).json({ message: "Server error" });
-  }
-};
-
-/* ======================================================
-   VERIFY DELETE OTP + FULL CLEANUP
-====================================================== */
-exports.verifyDeleteOtp = async (req, res) => {
-  try {
-    const { otp } = req.body;
-    const user = await Registration.findById(req.user._id);
-
-    const record = await Verification.findOne({
-      email: user.email,
-      purpose: "delete",
-      verified: false,
-    }).sort({ createdAt: -1 });
-
-    if (!record || hashOtp(otp) !== record.otpHash)
-      return res.status(400).json({ message: "Invalid OTP" });
-
-    await Transaction.deleteMany({ email: user.email });
-    await Balance.deleteMany({ email: user.email });
-    await Stock.deleteMany({ email: user.email });
-    await Registration.deleteOne({ _id: user._id });
-    await Verification.deleteMany({ email: user.email });
-
-    res.clearCookie("token", { path: "/" });
-    res.json({ ok: true, message: "Account deleted permanently" });
-  } catch (err) {
-    res.status(500).json({ message: "Server error" });
-  }
-};
-
-/* ======================================================
-   CHANGE PASSWORD
-====================================================== */
-exports.changePassword = async (req, res) => {
-  try {
-    const { oldPassword, newPassword } = req.body;
-    const user = await Registration.findById(req.user._id);
-
-    const ok = await bcrypt.compare(oldPassword, user.password);
-    if (!ok) return res.status(400).json({ message: "Old password incorrect" });
-
-    user.password = await bcrypt.hash(newPassword, 10);
-    await user.save();
-
-    res.json({ ok: true, message: "Password changed" });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
-  }
-};
-
-exports.logout = (req, res) => {
-  res.clearCookie("token", {
-    httpOnly: true,
-    secure: true,
-    sameSite: "None",
-    path: "/",
-  });
-  res.json({ ok: true, message: "Logged out successfully" });
 };
