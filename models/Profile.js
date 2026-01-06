@@ -19,6 +19,12 @@ const profileSchema = new mongoose.Schema(
 
     // Education
     standard: String,
+
+    // ✅ PROFILE PHOTO
+    profilePhoto: {
+      type: String, // /uploads/filename.jpg
+      default: "",
+    },
   },
   { timestamps: true }
 );
