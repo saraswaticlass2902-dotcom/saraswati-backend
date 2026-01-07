@@ -29,6 +29,6 @@ router.put(
 );
 
 // ✅ DELETE COURSE
-router.delete("/:id", adminAuth, courseController.deleteCourse);
+router.delete("/:id",  courseController.deleteCourse);
 
 module.exports = router;
