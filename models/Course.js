@@ -3,49 +3,18 @@ const mongoose = require("mongoose");
 
 const courseSchema = new mongoose.Schema(
   {
-    title: {
-      type: String,
-      required: true,
-      trim: true,
-    },
+    title: String,
+    price: Number,
+    category: String,
+    duration: String,
+    instructor: String,
+    description: String,
 
-    price: {
-      type: Number,
-      required: true,
-      min: 0,
-    },
-
-    category: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-
-    duration: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-
-    instructor: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-
-    description: {
-      type: String,
-      default: "",
-    },
-
-    thumbnail: {
-      type: String, // /uploads/filename.jpg
-      required: true,
-    },
+    // ✅ SAME AS PROFILE PHOTO
+    thumbnail: String,              // Cloudinary URL
+    thumbnailPublicId: String,       // Cloudinary public_id
   },
-  {
-    timestamps: true, // createdAt, updatedAt
-  }
+  { timestamps: true }
 );
 
 module.exports = mongoose.model("Course", courseSchema);

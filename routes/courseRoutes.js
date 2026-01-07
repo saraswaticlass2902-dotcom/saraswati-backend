@@ -1,17 +1,33 @@
 const express = require("express");
 const router = express.Router();
-const upload = require("../middleware/upload");
+
+const uploadCourse = require("../middleware/uploadCourse");
 const courseController = require("../controllers/courseController");
+const adminAuth = require("../middleware/adminAuth"); // ✅ optional but recommended
 
-
+// ✅ ADD COURSE (Cloudinary)
 router.post(
   "/add",
-  upload.single("thumbnail"), // 👈 THIS IS CRITICAL
+  adminAuth, // admin only
+  uploadCourse.single("thumbnail"), // 🔴 MUST match frontend
   courseController.addCourse
 );
+
+// ✅ LIST COURSES
 router.get("/list", courseController.getAllCourses);
+
+// ✅ GET SINGLE COURSE
 router.get("/:id", courseController.getCourseById);
-router.put("/:id", upload.single("thumbnail"), courseController.updateCourse);
-router.delete("/:id", courseController.deleteCourse);
+
+// ✅ UPDATE COURSE (optional image replace)
+router.put(
+  "/:id",
+  adminAuth,
+  uploadCourse.single("thumbnail"),
+  courseController.updateCourse
+);
+
+// ✅ DELETE COURSE
+router.delete("/:id", adminAuth, courseController.deleteCourse);
 
 module.exports = router;
