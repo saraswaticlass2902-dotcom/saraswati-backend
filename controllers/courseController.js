@@ -128,37 +128,82 @@
 //   }
 // };
 
-
 // controllers/courseController.js
 const Course = require("../models/Course");
 const cloudinary = require("cloudinary").v2;
 
-/* ===== ADD COURSE ===== */
+/* ================= ADD COURSE ================= */
 exports.addCourse = async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ message: "Thumbnail required" });
     }
 
-    const course = await Course.create({
-      ...req.body,
+    const {
+      title,
+      price,
+      category,
+      duration,
+      instructor,
+      description,
+    } = req.body;
 
-      // ✅ SAME AS PROFILE PHOTO
+    if (!title || !price || !category || !duration || !instructor) {
+      return res.status(400).json({ message: "All required fields missing" });
+    }
+
+    const course = await Course.create({
+      title,
+      price,
+      category,
+      duration,
+      instructor,
+      description,
+
+      // ✅ Cloudinary (profile photo style)
       thumbnail: req.file.path,            // Cloudinary URL
       thumbnailPublicId: req.file.filename // public_id
     });
 
     res.status(201).json(course);
   } catch (err) {
+    console.error("Add course error:", err);
     res.status(500).json({ message: "Add course failed" });
   }
 };
 
-/* ===== UPDATE COURSE ===== */
+/* ================= GET ALL COURSES ================= */
+exports.getAllCourses = async (req, res) => {
+  try {
+    const courses = await Course.find().sort({ createdAt: -1 });
+    res.json(courses);
+  } catch (err) {
+    console.error("Get all courses error:", err);
+    res.status(500).json({ message: "Failed to fetch courses" });
+  }
+};
+
+/* ================= GET COURSE BY ID ================= */
+exports.getCourseById = async (req, res) => {
+  try {
+    const course = await Course.findById(req.params.id);
+    if (!course) {
+      return res.status(404).json({ message: "Course not found" });
+    }
+    res.json(course);
+  } catch (err) {
+    console.error("Get course error:", err);
+    res.status(500).json({ message: "Failed to fetch course" });
+  }
+};
+
+/* ================= UPDATE COURSE ================= */
 exports.updateCourse = async (req, res) => {
   try {
     const course = await Course.findById(req.params.id);
-    if (!course) return res.status(404).json({ message: "Not found" });
+    if (!course) {
+      return res.status(404).json({ message: "Course not found" });
+    }
 
     // 🔄 Replace image like profile photo
     if (req.file) {
@@ -170,29 +215,50 @@ exports.updateCourse = async (req, res) => {
       course.thumbnailPublicId = req.file.filename;
     }
 
-    Object.assign(course, req.body);
+    // Update other fields
+    const {
+      title,
+      price,
+      category,
+      duration,
+      instructor,
+      description,
+    } = req.body;
+
+    course.title = title ?? course.title;
+    course.price = price ?? course.price;
+    course.category = category ?? course.category;
+    course.duration = duration ?? course.duration;
+    course.instructor = instructor ?? course.instructor;
+    course.description = description ?? course.description;
+
     await course.save();
 
     res.json(course);
   } catch (err) {
+    console.error("Update course error:", err);
     res.status(500).json({ message: "Update failed" });
   }
 };
 
-/* ===== DELETE COURSE ===== */
+/* ================= DELETE COURSE ================= */
 exports.deleteCourse = async (req, res) => {
   try {
     const course = await Course.findById(req.params.id);
-    if (!course) return res.status(404).json({ message: "Not found" });
+    if (!course) {
+      return res.status(404).json({ message: "Course not found" });
+    }
 
-    // 🗑️ SAME AS PROFILE DELETE
+    // 🗑️ Delete Cloudinary image (profile photo style)
     if (course.thumbnailPublicId) {
       await cloudinary.uploader.destroy(course.thumbnailPublicId);
     }
 
     await course.deleteOne();
-    res.json({ message: "Course deleted" });
+
+    res.json({ message: "Course deleted successfully" });
   } catch (err) {
+    console.error("Delete course error:", err);
     res.status(500).json({ message: "Delete failed" });
   }
 };

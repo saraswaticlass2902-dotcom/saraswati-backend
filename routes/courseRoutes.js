@@ -13,6 +13,12 @@ router.post(
   courseController.addCourse
 );
 
+router.post(
+  "/add",
+  uploadCourse.single("thumbnail"), // ✅ COURSE middleware
+  courseController.addCourse
+);
+
 // ✅ LIST COURSES
 router.get("/list", courseController.getAllCourses);
 
