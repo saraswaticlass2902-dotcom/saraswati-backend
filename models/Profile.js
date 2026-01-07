@@ -20,9 +20,15 @@ const profileSchema = new mongoose.Schema(
     // Education
     standard: String,
 
-    // ✅ PROFILE PHOTO
+    // ✅ PROFILE PHOTO (Cloudinary)
     profilePhoto: {
-      type: String, // /uploads/filename.jpg
+      type: String, // Cloudinary secure URL
+      default: "",
+    },
+
+    // ✅ IMPORTANT: Cloudinary public_id
+    profilePhotoPublicId: {
+      type: String,
       default: "",
     },
   },
