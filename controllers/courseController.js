@@ -127,8 +127,6 @@
 //     res.status(500).json({ message: "Server error" });
 //   }
 // };
-
-// controllers/courseController.js
 const Course = require("../models/Course");
 const cloudinary = require("cloudinary").v2;
 
@@ -148,10 +146,6 @@ exports.addCourse = async (req, res) => {
       description,
     } = req.body;
 
-    if (!title || !price || !category || !duration || !instructor) {
-      return res.status(400).json({ message: "All required fields missing" });
-    }
-
     const course = await Course.create({
       title,
       price,
@@ -161,8 +155,8 @@ exports.addCourse = async (req, res) => {
       description,
 
       // ✅ Cloudinary (profile photo style)
-      thumbnail: req.file.path,            // Cloudinary URL
-      thumbnailPublicId: req.file.filename // public_id
+      thumbnail: req.file.path,
+      thumbnailPublicId: req.file.filename,
     });
 
     res.status(201).json(course);
@@ -205,7 +199,6 @@ exports.updateCourse = async (req, res) => {
       return res.status(404).json({ message: "Course not found" });
     }
 
-    // 🔄 Replace image like profile photo
     if (req.file) {
       if (course.thumbnailPublicId) {
         await cloudinary.uploader.destroy(course.thumbnailPublicId);
@@ -215,23 +208,7 @@ exports.updateCourse = async (req, res) => {
       course.thumbnailPublicId = req.file.filename;
     }
 
-    // Update other fields
-    const {
-      title,
-      price,
-      category,
-      duration,
-      instructor,
-      description,
-    } = req.body;
-
-    course.title = title ?? course.title;
-    course.price = price ?? course.price;
-    course.category = category ?? course.category;
-    course.duration = duration ?? course.duration;
-    course.instructor = instructor ?? course.instructor;
-    course.description = description ?? course.description;
-
+    Object.assign(course, req.body);
     await course.save();
 
     res.json(course);
@@ -249,13 +226,11 @@ exports.deleteCourse = async (req, res) => {
       return res.status(404).json({ message: "Course not found" });
     }
 
-    // 🗑️ Delete Cloudinary image (profile photo style)
     if (course.thumbnailPublicId) {
       await cloudinary.uploader.destroy(course.thumbnailPublicId);
     }
 
     await course.deleteOne();
-
     res.json({ message: "Course deleted successfully" });
   } catch (err) {
     console.error("Delete course error:", err);

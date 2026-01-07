@@ -8,16 +8,11 @@ const adminAuth = require("../middleware/adminAuth"); // ✅ optional but recomm
 // ✅ ADD COURSE (Cloudinary)
 router.post(
   "/add",
-  adminAuth, // admin only
-  uploadCourse.single("thumbnail"), // 🔴 MUST match frontend
+  adminAuth,
+  uploadCourse.single("thumbnail"),
   courseController.addCourse
 );
 
-router.post(
-  "/add",
-  uploadCourse.single("thumbnail"), // ✅ COURSE middleware
-  courseController.addCourse
-);
 
 // ✅ LIST COURSES
 router.get("/list", courseController.getAllCourses);
